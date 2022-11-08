@@ -13,10 +13,14 @@ const unUsedNamedString = "John";
 export { usedNamedString, unUsedNamedString };
 export const usedDirectExportString = "John";
 export const unUsedDirectExportString = "John";
-
-export function usedFn() {}
-export function unUsedFn() {}
-export const unUsedFn = () => username;
+export type usedTypeDirect = { foo: string };
+export type unUsedTypeDirect = { foo: string };
+type usedType = { foo: string };
+type unUsedType = { foo: string };
+export type { usedType, unUsedType };
+export function usedFnDirect() {}
+export function unUsedFnDirect() {}
+export const unUsedArrowFnDirect = () => username;
 
 const exporter = {
   usedArrowFn,

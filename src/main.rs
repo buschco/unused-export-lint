@@ -14,7 +14,7 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let path = &args[1].replace("/", "");
+    let path = &args[1];
 
     build_export_map(path);
 
@@ -104,6 +104,8 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
 
             'inner: loop {
                 if export_cursor.node().kind() == "export_clause" {
+                    // export { foo, bar }
+                    // export type { foo, bar }
                     let mut export_clause_cursor = export_cursor.node().walk();
                     export_clause_cursor.goto_first_child();
 
@@ -143,8 +145,8 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
                             break 'export_clause;
                         }
                     }
-                }
-                if export_cursor.node().kind() == "function_declaration" {
+                } else if export_cursor.node().kind() == "function_declaration" {
+                    // export function foo() {}
                     {
                         match export_cursor.node().child(1) {
                             Some(exported_identifier) => {
@@ -162,6 +164,7 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
                         };
                     }
                 } else if export_cursor.node().kind() == "lexical_declaration" {
+                    // export function foo() {}
                     match export_cursor.node().child(1) {
                         Some(exported_variable_declarator) => {
                             match exported_variable_declarator.child(0) {
@@ -181,6 +184,26 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
                         }
                         _ => (),
                     };
+                } else if export_cursor.node().kind() == "type_alias_declaration" {
+                    //export type Foo = {  }
+                    let mut type_alias_declaration_cursor = export_cursor.node().walk();
+                    type_alias_declaration_cursor.goto_first_child();
+                    type_alias_declaration_cursor.goto_next_sibling();
+
+                    if type_alias_declaration_cursor.node().kind() == "type_identifier" {
+                        match data.get(
+                            type_alias_declaration_cursor.node().range().start_byte
+                                ..type_alias_declaration_cursor.node().range().end_byte,
+                        ) {
+                            Some(s) => {
+                                vec.push(s.to_owned());
+                            }
+                            _ => (),
+                        };
+                    }
+                } else if export_cursor.node().kind() == "identifier" {
+                    //export default foo
+                    vec.push("default".to_owned());
                 }
 
                 if !export_cursor.goto_next_sibling() {
