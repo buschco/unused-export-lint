@@ -50,6 +50,15 @@ fn print_source(node: &Node, data: &str, path: &PathBuf) {
     println!("{}", src);
 }
 
+fn add_node_to_vec(node: &Node, data: &str, vec: &mut Vec<String>) {
+    match data.get(node.range().start_byte..node.range().end_byte) {
+        Some(s) => {
+            vec.push(s.to_owned());
+        }
+        _ => (),
+    }
+}
+
 fn build_export_map(path: &String) {
     let mut export_map = HashMap::new();
 
@@ -113,30 +122,14 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
                         if export_clause_cursor.node().kind() == "export_specifier" {
                             match export_clause_cursor.node().child(0) {
                                 Some(exported_identifier) => {
-                                    match data.get(
-                                        exported_identifier.range().start_byte
-                                            ..exported_identifier.range().end_byte,
-                                    ) {
-                                        Some(s) => {
-                                            vec.push(s.to_owned());
-                                        }
-                                        _ => (),
-                                    }
+                                    add_node_to_vec(&exported_identifier, &data, &mut vec);
                                 }
                                 _ => (),
                             };
                         } else if export_clause_cursor.node().kind() == "export_specifier" {
                             match export_clause_cursor.node().child(0) {
                                 Some(exported_identifier) => {
-                                    match data.get(
-                                        exported_identifier.range().start_byte
-                                            ..exported_identifier.range().end_byte,
-                                    ) {
-                                        Some(s) => {
-                                            vec.push(s.to_owned());
-                                        }
-                                        _ => (),
-                                    }
+                                    add_node_to_vec(&exported_identifier, &data, &mut vec);
                                 }
                                 _ => (),
                             };
@@ -150,15 +143,7 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
                     {
                         match export_cursor.node().child(1) {
                             Some(exported_identifier) => {
-                                match data.get(
-                                    exported_identifier.range().start_byte
-                                        ..exported_identifier.range().end_byte,
-                                ) {
-                                    Some(s) => {
-                                        vec.push(s.to_owned());
-                                    }
-                                    _ => (),
-                                };
+                                add_node_to_vec(&exported_identifier, &data, &mut vec);
                             }
                             _ => (),
                         };
@@ -169,15 +154,7 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
                         Some(exported_variable_declarator) => {
                             match exported_variable_declarator.child(0) {
                                 Some(exported_identifier) => {
-                                    match data.get(
-                                        exported_identifier.range().start_byte
-                                            ..exported_identifier.range().end_byte,
-                                    ) {
-                                        Some(s) => {
-                                            vec.push(s.to_owned());
-                                        }
-                                        _ => (),
-                                    };
+                                    add_node_to_vec(&exported_identifier, &data, &mut vec);
                                 }
                                 _ => (),
                             };
@@ -191,15 +168,7 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
                     type_alias_declaration_cursor.goto_next_sibling();
 
                     if type_alias_declaration_cursor.node().kind() == "type_identifier" {
-                        match data.get(
-                            type_alias_declaration_cursor.node().range().start_byte
-                                ..type_alias_declaration_cursor.node().range().end_byte,
-                        ) {
-                            Some(s) => {
-                                vec.push(s.to_owned());
-                            }
-                            _ => (),
-                        };
+                        add_node_to_vec(&type_alias_declaration_cursor.node(), &data, &mut vec);
                     }
                 } else if export_cursor.node().kind() == "identifier" {
                     //export default foo
