@@ -1,4 +1,5 @@
 use glob::glob;
+use path_clean::clean;
 use std::env;
 use std::{
     collections::HashMap,
@@ -90,7 +91,7 @@ fn collect_import_export_statements(path: &PathBuf) -> (Vec<(Vec<String>, String
             let mut import_cursor = cursor.node().walk();
             import_cursor.goto_first_child();
 
-            let mut source = None;
+            let mut source: Option<&str> = None;
             let mut identifiers = Vec::with_capacity(0);
 
             'inner: loop {
@@ -125,16 +126,22 @@ fn collect_import_export_statements(path: &PathBuf) -> (Vec<(Vec<String>, String
                         import_cursor.node().range().start_byte
                             ..import_cursor.node().range().end_byte,
                     );
-                }
+                };
 
                 if !import_cursor.goto_next_sibling() {
                     break 'inner;
                 }
             }
 
-            match source {
-                Some(s) => imports.push((identifiers.to_owned(), s.to_owned())),
-                _ => (),
+            if let Some(s) = source {
+                let s_cleaned = s.replace("\"", "").to_owned();
+                if s_cleaned.starts_with('.') {
+                    if let Some(source_path) =
+                        path.clone().with_file_name("").join(&s_cleaned).to_str()
+                    {
+                        imports.push((identifiers.to_owned(), clean(source_path).to_owned()));
+                    }
+                }
             }
         }
         if cursor.node().kind() == "export_statement" {
@@ -195,8 +202,8 @@ fn collect_import_export_statements(path: &PathBuf) -> (Vec<(Vec<String>, String
                     if type_alias_declaration_cursor.node().kind() == "type_identifier" {
                         add_export(&type_alias_declaration_cursor.node(), &data, &mut exports);
                     }
-                } else if export_cursor.node().kind() == "identifier" {
-                    //export default foo
+                } else if export_cursor.node().kind() == "default" {
+                    // export default foo
                     exports.push("default".to_owned());
                 }
 
