@@ -16,7 +16,7 @@ fn main() -> ExitCode {
 
     let path = &args[1];
 
-    build_export_map(path);
+    build_import_export_map(path);
 
     return ExitCode::SUCCESS;
 }
@@ -31,26 +31,7 @@ fn create_parser() -> Parser {
     return parser;
 }
 
-fn print_source(node: &Node, data: &str, path: &PathBuf) {
-    let src_range = node.range();
-
-    let src = match data.get(src_range.start_byte..src_range.end_byte) {
-        Some(inner) => inner,
-        None => {
-            println!(
-                "Failed to get source code at pos ln: {} col: {} from {}",
-                src_range.start_byte,
-                src_range.end_byte,
-                path.display()
-            );
-            return;
-        }
-    };
-
-    println!("{}", src);
-}
-
-fn add_node_to_vec(node: &Node, data: &str, vec: &mut Vec<String>) {
+fn add_export(node: &Node, data: &str, vec: &mut Vec<String>) {
     match data.get(node.range().start_byte..node.range().end_byte) {
         Some(s) => {
             vec.push(s.to_owned());
@@ -59,31 +40,32 @@ fn add_node_to_vec(node: &Node, data: &str, vec: &mut Vec<String>) {
     }
 }
 
-fn build_export_map(path: &String) {
-    let mut export_map = HashMap::new();
+fn build_import_export_map(dir: &str) {
+    let mut import_exports_map = HashMap::new();
 
-    for entry in glob(&[path, "**/*.js"].join("/")).expect("Failed to read glob pattern") {
-        match entry {
-            Ok(path) => {
-                let exports = find_exports(&path);
-                export_map.insert(path, exports);
-            }
-            Err(e) => println!("{:?}", e),
-        }
+    for path in glob(&[dir, "**/*.js"].join("/"))
+        .expect("Failed to read glob pattern")
+        .filter(|x| x.is_ok())
+        .map(|x| x.unwrap())
+    {
+        let (imports, exports) = collect_import_export_statements(&path);
+        import_exports_map.insert(path.to_owned(), (imports, exports));
     }
-    dbg!(export_map);
+
+    dbg!(import_exports_map);
 }
 
-fn find_exports(path: &PathBuf) -> Vec<String> {
+fn collect_import_export_statements(path: &PathBuf) -> (Vec<(Vec<String>, String)>, Vec<String>) {
     println!("Analyzing exports in: {}", path.display());
 
-    let mut vec = Vec::with_capacity(0);
+    let mut imports = Vec::with_capacity(0);
+    let mut exports = Vec::with_capacity(0);
 
     let data = match fs::read_to_string(path) {
         Ok(d) => d,
         Err(e) => {
             println!("Failed to read file {}: {}", path.display(), e);
-            return vec;
+            return (imports, exports);
         }
     };
 
@@ -93,7 +75,7 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
         Some(inner) => inner,
         None => {
             println!("Failed to parse the file {}", path.display());
-            return vec;
+            return (imports, exports);
         }
     };
 
@@ -104,9 +86,58 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
     cursor.goto_first_child();
 
     'main: loop {
+        if cursor.node().kind() == "import_statement" {
+            let mut import_cursor = cursor.node().walk();
+            import_cursor.goto_first_child();
+
+            let mut source = None;
+            let mut identifiers = Vec::with_capacity(0);
+
+            'inner: loop {
+                if import_cursor.node().kind() == "import_clause" {
+                    let mut import_clause_cursor = import_cursor.node().walk();
+                    import_clause_cursor.goto_first_child();
+
+                    if import_clause_cursor.node().child_count() > 0 {
+                        let mut identifiers_cursor = import_clause_cursor.node().walk();
+                        identifiers_cursor.goto_first_child();
+
+                        'identifiers: loop {
+                            if identifiers_cursor.node().kind() == "import_specifier" {
+                                match data.get(
+                                    identifiers_cursor.node().range().start_byte
+                                        ..identifiers_cursor.node().range().end_byte,
+                                ) {
+                                    Some(identifier) => identifiers.push(identifier.to_owned()),
+                                    _ => (),
+                                }
+                            }
+
+                            if !identifiers_cursor.goto_next_sibling() {
+                                break 'identifiers;
+                            }
+                        }
+                    } else {
+                        identifiers.push("default".to_owned());
+                    }
+                } else if import_cursor.node().kind() == "string" {
+                    source = data.get(
+                        import_cursor.node().range().start_byte
+                            ..import_cursor.node().range().end_byte,
+                    );
+                }
+
+                if !import_cursor.goto_next_sibling() {
+                    break 'inner;
+                }
+            }
+
+            match source {
+                Some(s) => imports.push((identifiers.to_owned(), s.to_owned())),
+                _ => (),
+            }
+        }
         if cursor.node().kind() == "export_statement" {
-            print!("Found Export Statement -> ");
-            print_source(&cursor.node(), &data, &path);
             let mut export_cursor = cursor.node().walk();
 
             export_cursor.goto_first_child();
@@ -122,18 +153,12 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
                         if export_clause_cursor.node().kind() == "export_specifier" {
                             match export_clause_cursor.node().child(0) {
                                 Some(exported_identifier) => {
-                                    add_node_to_vec(&exported_identifier, &data, &mut vec);
-                                }
-                                _ => (),
-                            };
-                        } else if export_clause_cursor.node().kind() == "export_specifier" {
-                            match export_clause_cursor.node().child(0) {
-                                Some(exported_identifier) => {
-                                    add_node_to_vec(&exported_identifier, &data, &mut vec);
+                                    add_export(&exported_identifier, &data, &mut exports);
                                 }
                                 _ => (),
                             };
                         }
+
                         if !export_clause_cursor.goto_next_sibling() {
                             break 'export_clause;
                         }
@@ -143,7 +168,7 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
                     {
                         match export_cursor.node().child(1) {
                             Some(exported_identifier) => {
-                                add_node_to_vec(&exported_identifier, &data, &mut vec);
+                                add_export(&exported_identifier, &data, &mut exports);
                             }
                             _ => (),
                         };
@@ -154,7 +179,7 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
                         Some(exported_variable_declarator) => {
                             match exported_variable_declarator.child(0) {
                                 Some(exported_identifier) => {
-                                    add_node_to_vec(&exported_identifier, &data, &mut vec);
+                                    add_export(&exported_identifier, &data, &mut exports);
                                 }
                                 _ => (),
                             };
@@ -162,17 +187,17 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
                         _ => (),
                     };
                 } else if export_cursor.node().kind() == "type_alias_declaration" {
-                    //export type Foo = {  }
+                    // export type Foo = {  }
                     let mut type_alias_declaration_cursor = export_cursor.node().walk();
                     type_alias_declaration_cursor.goto_first_child();
                     type_alias_declaration_cursor.goto_next_sibling();
 
                     if type_alias_declaration_cursor.node().kind() == "type_identifier" {
-                        add_node_to_vec(&type_alias_declaration_cursor.node(), &data, &mut vec);
+                        add_export(&type_alias_declaration_cursor.node(), &data, &mut exports);
                     }
                 } else if export_cursor.node().kind() == "identifier" {
                     //export default foo
-                    vec.push("default".to_owned());
+                    exports.push("default".to_owned());
                 }
 
                 if !export_cursor.goto_next_sibling() {
@@ -186,5 +211,5 @@ fn find_exports(path: &PathBuf) -> Vec<String> {
         }
     }
 
-    return vec;
+    return (imports, exports);
 }

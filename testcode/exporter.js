@@ -21,6 +21,7 @@ export type { usedType, unUsedType };
 export function usedFnDirect() {}
 export function unUsedFnDirect() {}
 export const unUsedArrowFnDirect = () => username;
+export const unArrowFnDirect = () => username;
 
 const exporter = {
   usedArrowFn,
