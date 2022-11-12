@@ -33,11 +33,8 @@ fn create_parser() -> Parser {
 }
 
 fn add_export(node: &Node, data: &str, vec: &mut Vec<String>) {
-    match data.get(node.range().start_byte..node.range().end_byte) {
-        Some(s) => {
-            vec.push(s.to_owned());
-        }
-        _ => (),
+    if let Some(s) = data.get(node.range().start_byte..node.range().end_byte) {
+        vec.push(s.to_owned());
     }
 }
 
@@ -105,12 +102,11 @@ fn collect_import_export_statements(path: &PathBuf) -> (Vec<(Vec<String>, String
 
                         'identifiers: loop {
                             if identifiers_cursor.node().kind() == "import_specifier" {
-                                match data.get(
+                                if let Some(identifier) = data.get(
                                     identifiers_cursor.node().range().start_byte
                                         ..identifiers_cursor.node().range().end_byte,
                                 ) {
-                                    Some(identifier) => identifiers.push(identifier.to_owned()),
-                                    _ => (),
+                                    identifiers.push(identifier.to_owned())
                                 }
                             }
 
@@ -158,11 +154,9 @@ fn collect_import_export_statements(path: &PathBuf) -> (Vec<(Vec<String>, String
 
                     'export_clause: loop {
                         if export_clause_cursor.node().kind() == "export_specifier" {
-                            match export_clause_cursor.node().child(0) {
-                                Some(exported_identifier) => {
-                                    add_export(&exported_identifier, &data, &mut exports);
-                                }
-                                _ => (),
+                            if let Some(exported_identifier) = export_clause_cursor.node().child(0)
+                            {
+                                add_export(&exported_identifier, &data, &mut exports);
                             };
                         }
 
@@ -173,25 +167,16 @@ fn collect_import_export_statements(path: &PathBuf) -> (Vec<(Vec<String>, String
                 } else if export_cursor.node().kind() == "function_declaration" {
                     // export function foo() {}
                     {
-                        match export_cursor.node().child(1) {
-                            Some(exported_identifier) => {
-                                add_export(&exported_identifier, &data, &mut exports);
-                            }
-                            _ => (),
+                        if let Some(exported_identifier) = export_cursor.node().child(1) {
+                            add_export(&exported_identifier, &data, &mut exports);
                         };
                     }
                 } else if export_cursor.node().kind() == "lexical_declaration" {
                     // export function foo() {}
-                    match export_cursor.node().child(1) {
-                        Some(exported_variable_declarator) => {
-                            match exported_variable_declarator.child(0) {
-                                Some(exported_identifier) => {
-                                    add_export(&exported_identifier, &data, &mut exports);
-                                }
-                                _ => (),
-                            };
-                        }
-                        _ => (),
+                    if let Some(exported_variable_declarator) = export_cursor.node().child(1) {
+                        if let Some(exported_identifier) = exported_variable_declarator.child(0) {
+                            add_export(&exported_identifier, &data, &mut exports);
+                        };
                     };
                 } else if export_cursor.node().kind() == "type_alias_declaration" {
                     // export type Foo = {  }
