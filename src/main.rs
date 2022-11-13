@@ -130,7 +130,7 @@ fn collect_import_export_statements(path: &PathBuf) -> (Vec<(Vec<String>, String
             }
 
             if let Some(s) = source {
-                let s_cleaned = s.replace("\"", "").to_owned();
+                let s_cleaned = s.replace("\"", "").replace("'", "").to_owned();
                 if s_cleaned.starts_with('.') {
                     if let Some(source_path) =
                         path.clone().with_file_name("").join(&s_cleaned).to_str()
